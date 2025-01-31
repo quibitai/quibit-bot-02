@@ -5,7 +5,8 @@ import cx from 'classnames';
 import { AnimatePresence, motion } from 'framer-motion';
 import { memo, useMemo, useState } from 'react';
 
-import type { Vote } from '@/lib/db/schema';
+import type { Vote } from '../lib/db/schema';
+import { cn } from '@/lib/utils';
 
 import { DocumentToolCall, DocumentToolResult } from './document';
 import { PencilEditIcon, SparklesIcon } from './icons';
@@ -14,11 +15,18 @@ import { MessageActions } from './message-actions';
 import { PreviewAttachment } from './preview-attachment';
 import { Weather } from './weather';
 import equal from 'fast-deep-equal';
-import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { MessageEditor } from './message-editor';
 import { DocumentPreview } from './document-preview';
+
+interface MessageContent {
+  type?: string;
+  text?: string;
+  toolCallId?: string;
+  toolName?: string;
+  args?: any;
+}
 
 const PurePreviewMessage = ({
   chatId,
@@ -101,11 +109,22 @@ const PurePreviewMessage = ({
 
                 <div
                   className={cn('flex flex-col gap-4', {
-                    'bg-primary text-primary-foreground px-3 py-2 rounded-xl':
+                    'bg-primary text-primary-foreground px-4 py-3 rounded-2xl shadow-sm':
                       message.role === 'user',
+                    'bg-muted px-4 py-3 rounded-2xl shadow-sm':
+                      message.role === 'assistant',
                   })}
                 >
-                  <Markdown>{message.content as string}</Markdown>
+                  <Markdown className="prose dark:prose-invert max-w-none">
+                    {typeof message.content === 'string' 
+                      ? message.content 
+                      : Array.isArray(message.content)
+                      ? (message.content as Array<string | MessageContent>)
+                          .map(c => typeof c === 'string' ? c : c.text)
+                          .filter(Boolean)
+                          .join('\n')
+                      : (message.content as MessageContent)?.text || ''}
+                  </Markdown>
                 </div>
               </div>
             )}

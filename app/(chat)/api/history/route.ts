@@ -1,14 +1,23 @@
-import { auth } from '@/app/(auth)/auth';
+import { createClient } from '@/utils/supabase/server';
 import { getChatsByUserId } from '@/lib/db/queries';
 
 export async function GET() {
-  const session = await auth();
+  const supabase = await createClient();
+  
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session || !session.user) {
-    return Response.json('Unauthorized!', { status: 401 });
+  if (!user) {
+    return new Response('Unauthorized', { status: 401 });
   }
 
-  // biome-ignore lint: Forbidden non-null assertion.
-  const chats = await getChatsByUserId({ id: session.user.id! });
-  return Response.json(chats);
+  try {
+    const chats = await getChatsByUserId({ id: user.id });
+    return Response.json(chats);
+  } catch (error) {
+    return new Response('An error occurred while fetching chats', {
+      status: 500,
+    });
+  }
 }

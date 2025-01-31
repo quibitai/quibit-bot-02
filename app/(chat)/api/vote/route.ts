@@ -1,4 +1,4 @@
-import { auth } from '@/app/(auth)/auth';
+import { auth } from '@/lib/auth';
 import { getVotesByChatId, voteMessage } from '@/lib/db/queries';
 
 export async function GET(request: Request) {
@@ -9,13 +9,13 @@ export async function GET(request: Request) {
     return new Response('chatId is required', { status: 400 });
   }
 
-  const session = await auth();
+  const user = await auth();
 
-  if (!session || !session.user || !session.user.email) {
+  if (!user) {
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const votes = await getVotesByChatId({ id: chatId });
+  const votes = await getVotesByChatId({ chatId });
 
   return Response.json(votes, { status: 200 });
 }
@@ -32,16 +32,16 @@ export async function PATCH(request: Request) {
     return new Response('messageId and type are required', { status: 400 });
   }
 
-  const session = await auth();
+  const user = await auth();
 
-  if (!session || !session.user || !session.user.email) {
+  if (!user) {
     return new Response('Unauthorized', { status: 401 });
   }
 
   await voteMessage({
-    chatId,
     messageId,
-    type: type,
+    userId: user.id,
+    value: type === 'up' ? 1 : -1
   });
 
   return new Response('Message voted', { status: 200 });

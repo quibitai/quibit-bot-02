@@ -1,8 +1,7 @@
-import { put } from '@vercel/blob';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-
-import { auth } from '@/app/(auth)/auth';
+import { createClient } from '@/utils/supabase/server';
+import { auth } from '@/lib/auth';
 
 // Use Blob instead of File since File is not available in Node.js environment
 const FileSchema = z.object({
@@ -18,51 +17,39 @@ const FileSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const session = await auth();
+  const user = await auth();
 
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!user || !user.id) {
+    return new Response('Unauthorized', { status: 401 });
   }
 
-  if (request.body === null) {
-    return new Response('Request body is empty', { status: 400 });
+  const formData = await request.formData();
+  const file = formData.get('file') as File;
+
+  if (!file) {
+    return new Response('No file found', { status: 400 });
   }
+
+  const filename = file.name;
+  const fileBuffer = await file.arrayBuffer();
+
+  const supabase = await createClient();
 
   try {
-    const formData = await request.formData();
-    const file = formData.get('file') as Blob;
-
-    if (!file) {
-      return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
-    }
-
-    const validatedFile = FileSchema.safeParse({ file });
-
-    if (!validatedFile.success) {
-      const errorMessage = validatedFile.error.errors
-        .map((error) => error.message)
-        .join(', ');
-
-      return NextResponse.json({ error: errorMessage }, { status: 400 });
-    }
-
-    // Get filename from formData since Blob doesn't have name property
-    const filename = (formData.get('file') as File).name;
-    const fileBuffer = await file.arrayBuffer();
-
-    try {
-      const data = await put(`${filename}`, fileBuffer, {
-        access: 'public',
+    const { data, error } = await supabase
+      .storage
+      .from('uploads')
+      .upload(`${user.id}/${filename}`, fileBuffer, {
+        contentType: file.type,
+        upsert: true
       });
 
-      return NextResponse.json(data);
-    } catch (error) {
-      return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
+    if (error) {
+      return new Response(error.message, { status: 500 });
     }
+
+    return Response.json(data);
   } catch (error) {
-    return NextResponse.json(
-      { error: 'Failed to process request' },
-      { status: 500 },
-    );
+    return new Response('Error uploading file', { status: 500 });
   }
 }

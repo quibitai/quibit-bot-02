@@ -162,7 +162,7 @@ function PureBlock({
             const newDocument = {
               ...currentDocument,
               content: updatedContent,
-              createdAt: new Date(),
+              created_at: new Date().toISOString(),
             };
 
             return [...currentDocuments, newDocument];
@@ -429,7 +429,7 @@ function PureBlock({
                   ) : document ? (
                     <div className="text-sm text-muted-foreground">
                       {`Updated ${formatDistance(
-                        new Date(document.createdAt),
+                        new Date(document.created_at),
                         new Date(),
                         {
                           addSuffix: true,

@@ -1,6 +1,6 @@
 import Form from 'next/form';
-
-import { signOut } from '@/app/(auth)/auth';
+import { signOut } from '@/lib/auth';
+import { redirect } from 'next/navigation';
 
 export const SignOutForm = () => {
   return (
@@ -8,10 +8,8 @@ export const SignOutForm = () => {
       className="w-full"
       action={async () => {
         'use server';
-
-        await signOut({
-          redirectTo: '/',
-        });
+        await signOut();
+        redirect('/');
       }}
     >
       <button

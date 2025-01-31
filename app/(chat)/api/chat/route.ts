@@ -3,11 +3,11 @@ import {
   createDataStreamResponse,
   smoothStream,
   streamText,
+  DataStreamWriter,
 } from 'ai';
 
-import { auth } from '@/app/(auth)/auth';
 import { customModel } from '@/lib/ai';
-import { models } from '@/lib/ai/models';
+import { models, Model } from '@/lib/ai/models';
 import { systemPrompt } from '@/lib/ai/prompts';
 import {
   deleteChatById,
@@ -26,6 +26,9 @@ import { createDocument } from '@/lib/ai/tools/create-document';
 import { updateDocument } from '@/lib/ai/tools/update-document';
 import { requestSuggestions } from '@/lib/ai/tools/request-suggestions';
 import { getWeather } from '@/lib/ai/tools/get-weather';
+import { createClient } from '@/utils/supabase/server';
+import { User } from '@supabase/supabase-js';
+import { auth } from '@/lib/auth';
 
 export const maxDuration = 60;
 
@@ -44,6 +47,22 @@ const blocksTools: AllowedTools[] = [
 const weatherTools: AllowedTools[] = ['getWeather'];
 const allTools: AllowedTools[] = [...blocksTools, ...weatherTools];
 
+interface SessionContext {
+  user: Pick<User, 'id'>;
+}
+
+interface ToolContext {
+  session: SessionContext;
+  dataStream: any;
+  model: any;
+}
+
+interface CreateDocumentProps {
+  model: Model;
+  session: User;
+  dataStream: DataStreamWriter;
+}
+
 export async function POST(request: Request) {
   const {
     id,
@@ -52,9 +71,9 @@ export async function POST(request: Request) {
   }: { id: string; messages: Array<Message>; modelId: string } =
     await request.json();
 
-  const session = await auth();
+  const user = await auth();
 
-  if (!session || !session.user || !session.user.id) {
+  if (!user || !user.id) {
     return new Response('Unauthorized', { status: 401 });
   }
 
@@ -74,11 +93,18 @@ export async function POST(request: Request) {
 
   if (!chat) {
     const title = await generateTitleFromUserMessage({ message: userMessage });
-    await saveChat({ id, userId: session.user.id, title });
+    await saveChat({ id, userId: user.id, title });
   }
 
   await saveMessages({
-    messages: [{ ...userMessage, createdAt: new Date(), chatId: id }],
+    messages: [{ 
+      ...userMessage,
+      role: userMessage.role as 'user' | 'assistant' | 'system',
+      created_at: new Date().toISOString(), 
+      chat_id: id,
+      user_id: user.id,
+      content: userMessage.content
+    }],
   });
 
   return createDataStreamResponse({
@@ -93,16 +119,26 @@ export async function POST(request: Request) {
         experimental_generateMessageId: generateUUID,
         tools: {
           getWeather,
-          createDocument: createDocument({ session, dataStream, model }),
-          updateDocument: updateDocument({ session, dataStream, model }),
-          requestSuggestions: requestSuggestions({
-            session,
-            dataStream,
+          createDocument: createDocument({ 
             model,
+            session: user,
+            dataStream
+          }),
+          updateDocument: updateDocument({ 
+            model,
+            session: user,
+            dataStream
+          }),
+          requestSuggestions: requestSuggestions({
+            documentId: id,
+            userId: user.id,
+            content: '',
+            model,
+            writer: dataStream
           }),
         },
         onFinish: async ({ response }) => {
-          if (session.user?.id) {
+          if (user.id) {
             try {
               const responseMessagesWithoutIncompleteToolCalls =
                 sanitizeResponseMessages(response.messages);
@@ -112,10 +148,11 @@ export async function POST(request: Request) {
                   (message) => {
                     return {
                       id: message.id,
-                      chatId: id,
-                      role: message.role,
-                      content: message.content,
-                      createdAt: new Date(),
+                      chat_id: id,
+                      user_id: user.id,
+                      role: message.role as 'user' | 'assistant' | 'system',
+                      content: JSON.stringify(message.content),
+                      created_at: new Date().toISOString(),
                     };
                   },
                 ),
@@ -144,16 +181,19 @@ export async function DELETE(request: Request) {
     return new Response('Not Found', { status: 404 });
   }
 
-  const session = await auth();
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session || !session.user) {
+  if (!user) {
     return new Response('Unauthorized', { status: 401 });
   }
 
   try {
     const chat = await getChatById({ id });
 
-    if (chat.userId !== session.user.id) {
+    if (chat.userId !== user.id) {
       return new Response('Unauthorized', { status: 401 });
     }
 

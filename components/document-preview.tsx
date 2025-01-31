@@ -87,11 +87,13 @@ export function DocumentPreview({
     : block.status === 'streaming'
       ? {
           title: block.title,
-          kind: block.kind,
+          type: block.kind,
           content: block.content,
           id: block.documentId,
-          createdAt: new Date(),
-          userId: 'noop',
+          user_id: 'noop',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          metadata: {}
         }
       : null;
 
@@ -102,7 +104,7 @@ export function DocumentPreview({
       <HitboxLayer hitboxRef={hitboxRef} result={result} setBlock={setBlock} />
       <DocumentHeader
         title={document.title}
-        kind={document.kind}
+        kind={document.type}
         isStreaming={block.status === 'streaming'}
       />
       <DocumentContent document={document} />
@@ -232,8 +234,8 @@ const DocumentContent = ({ document }: { document: Document }) => {
   const containerClassName = cn(
     'h-[257px] overflow-y-scroll border rounded-b-2xl dark:bg-muted border-t-0 dark:border-zinc-700',
     {
-      'p-4 sm:px-14 sm:py-16': document.kind === 'text',
-      'p-0': document.kind === 'code',
+      'p-4 sm:px-14 sm:py-16': document.type === 'text',
+      'p-0': document.type === 'code',
     },
   );
 
@@ -248,15 +250,15 @@ const DocumentContent = ({ document }: { document: Document }) => {
 
   return (
     <div className={containerClassName}>
-      {document.kind === 'text' ? (
+      {document.type === 'text' ? (
         <Editor {...commonProps} onSaveContent={() => {}} />
-      ) : document.kind === 'code' ? (
+      ) : document.type === 'code' ? (
         <div className="flex flex-1 relative w-full">
           <div className="absolute inset-0">
             <CodeEditor {...commonProps} onSaveContent={() => {}} />
           </div>
         </div>
-      ) : document.kind === 'image' ? (
+      ) : document.type === 'image' ? (
         <ImageEditor
           title={document.title}
           content={document.content ?? ''}

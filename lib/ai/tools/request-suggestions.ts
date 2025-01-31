@@ -1,92 +1,77 @@
 import { z } from 'zod';
 import { Model } from '../models';
-import { Session } from 'next-auth';
+import { User } from '@supabase/supabase-js';
 import { DataStreamWriter, streamObject, tool } from 'ai';
-import { getDocumentById, saveSuggestions } from '@/lib/db/queries';
+import { getDocumentById, saveSuggestion } from '@/lib/db/queries';
 import { Suggestion } from '@/lib/db/schema';
 import { customModel } from '..';
 import { generateUUID } from '@/lib/utils';
 
 interface RequestSuggestionsProps {
+  documentId: string;
+  userId: string;
+  content: string;
   model: Model;
-  session: Session;
-  dataStream: DataStreamWriter;
+  writer?: DataStreamWriter;
 }
 
 export const requestSuggestions = ({
+  documentId,
+  userId,
+  content,
   model,
-  session,
-  dataStream,
+  writer,
 }: RequestSuggestionsProps) =>
   tool({
-    description: 'Request suggestions for a document',
+    description: 'Request suggestions for improving a piece of text.',
     parameters: z.object({
-      documentId: z
-        .string()
-        .describe('The ID of the document to request edits'),
+      text: z.string().describe('The text to get suggestions for'),
     }),
-    execute: async ({ documentId }) => {
+    execute: async ({ text }) => {
       const document = await getDocumentById({ id: documentId });
-
-      if (!document || !document.content) {
-        return {
-          error: 'Document not found',
-        };
+      if (!document) {
+        console.warn(`Document not found for ID: ${documentId}`);
+        return { suggestions: [] };
       }
-
-      const suggestions: Array<
-        Omit<Suggestion, 'userId' | 'createdAt' | 'documentCreatedAt'>
-      > = [];
 
       const { elementStream } = streamObject({
         model: customModel(model.apiIdentifier),
-        system:
-          'You are a help writing assistant. Given a piece of writing, please offer suggestions to improve the piece of writing and describe the change. It is very important for the edits to contain full sentences instead of just words. Max 5 suggestions.',
-        prompt: document.content,
         output: 'array',
         schema: z.object({
-          originalSentence: z.string().describe('The original sentence'),
-          suggestedSentence: z.string().describe('The suggested sentence'),
+          original_text: z.string().describe('The original sentence'),
+          suggested_text: z.string().describe('The suggested sentence'),
           description: z.string().describe('The description of the suggestion'),
         }),
+        system: 'You are a help writing assistant. Given a piece of writing, please offer suggestions to improve the piece of writing and describe the change. It is very important for the edits to contain full sentences instead of just words. Max 5 suggestions.',
+        prompt: text,
       });
 
+      const suggestions: Array<Partial<Suggestion>> = [];
+      
       for await (const element of elementStream) {
         const suggestion = {
-          originalText: element.originalSentence,
-          suggestedText: element.suggestedSentence,
+          document_id: documentId,
+          user_id: userId,
+          original_text: element.original_text,
+          suggested_text: element.suggested_text,
           description: element.description,
-          id: generateUUID(),
-          documentId: documentId,
-          isResolved: false,
+          status: 'pending' as const
         };
 
-        dataStream.writeData({
-          type: 'suggestion',
-          content: suggestion,
-        });
+        if (writer) {
+          writer.writeData({
+            type: 'suggestion',
+            data: suggestion
+          });
+        }
 
         suggestions.push(suggestion);
       }
 
-      if (session.user?.id) {
-        const userId = session.user.id;
-
-        await saveSuggestions({
-          suggestions: suggestions.map((suggestion) => ({
-            ...suggestion,
-            userId,
-            createdAt: new Date(),
-            documentCreatedAt: document.createdAt,
-          })),
-        });
+      if (suggestions.length > 0) {
+        await saveSuggestion(suggestions);
       }
 
-      return {
-        id: documentId,
-        title: document.title,
-        kind: document.kind,
-        message: 'Suggestions have been added to the document',
-      };
+      return { suggestions };
     },
   });

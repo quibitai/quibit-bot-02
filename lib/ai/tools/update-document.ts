@@ -7,7 +7,7 @@ import {
   tool,
 } from 'ai';
 import { Model } from '../models';
-import { Session } from 'next-auth';
+import { User } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { getDocumentById, saveDocument } from '@/lib/db/queries';
 import { customModel, imageGenerationModel } from '..';
@@ -15,7 +15,7 @@ import { updateDocumentPrompt } from '../prompts';
 
 interface UpdateDocumentProps {
   model: Model;
-  session: Session;
+  session: User;
   dataStream: DataStreamWriter;
 }
 
@@ -36,9 +36,11 @@ export const updateDocument = ({
       const document = await getDocumentById({ id });
 
       if (!document) {
-        return {
-          error: 'Document not found',
-        };
+        throw new Error('Document not found');
+      }
+
+      if (session.id !== document.userId) {
+        throw new Error('Unauthorized');
       }
 
       const { content: currentContent } = document;
@@ -126,13 +128,13 @@ export const updateDocument = ({
         dataStream.writeData({ type: 'finish', content: '' });
       }
 
-      if (session.user?.id) {
+      if (session.id) {
         await saveDocument({
-          id,
+          id: document.id,
           title: document.title,
-          content: draftText,
           kind: document.kind,
-          userId: session.user.id,
+          content: draftText,
+          userId: session.id,
         });
       }
 

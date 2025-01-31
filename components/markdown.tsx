@@ -3,6 +3,7 @@ import React, { memo, useMemo, useState } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CodeBlock } from './code-block';
+import { cn } from '@/lib/utils';
 
 const components: Partial<Components> = {
   // @ts-expect-error
@@ -10,7 +11,7 @@ const components: Partial<Components> = {
   pre: ({ children }) => <>{children}</>,
   ol: ({ node, children, ...props }) => {
     return (
-      <ol className="list-decimal list-outside ml-4" {...props}>
+      <ol className="list-decimal list-outside ml-4 my-2" {...props}>
         {children}
       </ol>
     );
@@ -24,9 +25,16 @@ const components: Partial<Components> = {
   },
   ul: ({ node, children, ...props }) => {
     return (
-      <ul className="list-decimal list-outside ml-4" {...props}>
+      <ul className="list-disc list-outside ml-4 my-2" {...props}>
         {children}
       </ul>
+    );
+  },
+  p: ({ node, children, ...props }) => {
+    return (
+      <p className="leading-7 [&:not(:first-child)]:mt-2" {...props}>
+        {children}
+      </p>
     );
   },
   strong: ({ node, children, ...props }) => {
@@ -95,15 +103,24 @@ const components: Partial<Components> = {
 
 const remarkPlugins = [remarkGfm];
 
-const NonMemoizedMarkdown = ({ children }: { children: string }) => {
+interface MarkdownProps {
+  children: string;
+  className?: string;
+}
+
+const NonMemoizedMarkdown = ({ children, className }: MarkdownProps) => {
   return (
-    <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
-      {children}
-    </ReactMarkdown>
+    <div className={cn("prose-pre:bg-muted/50", className)}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
+        {children}
+      </ReactMarkdown>
+    </div>
   );
 };
 
 export const Markdown = memo(
   NonMemoizedMarkdown,
-  (prevProps, nextProps) => prevProps.children === nextProps.children,
+  (prevProps, nextProps) => 
+    prevProps.children === nextProps.children && 
+    prevProps.className === nextProps.className
 );

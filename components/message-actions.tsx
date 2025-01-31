@@ -58,7 +58,7 @@ export function PureMessageActions({
           <TooltipTrigger asChild>
             <Button
               className="py-1 px-2 h-fit text-muted-foreground !pointer-events-auto"
-              disabled={vote?.isUpvoted}
+              disabled={vote?.value === 1}
               variant="outline"
               onClick={async () => {
                 const upvote = fetch('/api/vote', {
@@ -79,15 +79,18 @@ export function PureMessageActions({
                         if (!currentVotes) return [];
 
                         const votesWithoutCurrent = currentVotes.filter(
-                          (vote) => vote.messageId !== message.id,
+                          (vote) => vote.message_id !== message.id,
                         );
 
                         return [
                           ...votesWithoutCurrent,
                           {
-                            chatId,
-                            messageId: message.id,
-                            isUpvoted: true,
+                            id: crypto.randomUUID(),
+                            message_id: message.id,
+                            user_id: '',
+                            value: 1,
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
                           },
                         ];
                       },
@@ -111,7 +114,7 @@ export function PureMessageActions({
             <Button
               className="py-1 px-2 h-fit text-muted-foreground !pointer-events-auto"
               variant="outline"
-              disabled={vote && !vote.isUpvoted}
+              disabled={vote?.value === -1}
               onClick={async () => {
                 const downvote = fetch('/api/vote', {
                   method: 'PATCH',
@@ -131,15 +134,18 @@ export function PureMessageActions({
                         if (!currentVotes) return [];
 
                         const votesWithoutCurrent = currentVotes.filter(
-                          (vote) => vote.messageId !== message.id,
+                          (vote) => vote.message_id !== message.id,
                         );
 
                         return [
                           ...votesWithoutCurrent,
                           {
-                            chatId,
-                            messageId: message.id,
-                            isUpvoted: false,
+                            id: crypto.randomUUID(),
+                            message_id: message.id,
+                            user_id: '',
+                            value: -1,
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
                           },
                         ];
                       },

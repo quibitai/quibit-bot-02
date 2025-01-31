@@ -11,12 +11,12 @@ import { z } from 'zod';
 import { customModel, imageGenerationModel } from '..';
 import { codePrompt } from '../prompts';
 import { saveDocument } from '@/lib/db/queries';
-import { Session } from 'next-auth';
+import { User } from '@supabase/supabase-js';
 import { Model } from '../models';
 
 interface CreateDocumentProps {
   model: Model;
-  session: Session;
+  session: User;
   dataStream: DataStreamWriter;
 }
 
@@ -126,13 +126,13 @@ export const createDocument = ({
         dataStream.writeData({ type: 'finish', content: '' });
       }
 
-      if (session.user?.id) {
+      if (session.id) {
         await saveDocument({
           id,
           title,
           kind,
           content: draftText,
-          userId: session.user.id,
+          userId: session.id,
         });
       }
 

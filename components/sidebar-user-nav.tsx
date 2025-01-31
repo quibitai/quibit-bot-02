@@ -1,9 +1,10 @@
 'use client';
 import { ChevronUp } from 'lucide-react';
 import Image from 'next/image';
-import type { User } from 'next-auth';
-import { signOut } from 'next-auth/react';
+import { User } from '@supabase/supabase-js';
 import { useTheme } from 'next-themes';
+import { useRouter } from 'next/navigation';
+import { createClient } from '@/utils/supabase/client';
 
 import {
   DropdownMenu,
@@ -20,6 +21,8 @@ import {
 
 export function SidebarUserNav({ user }: { user: User }) {
   const { setTheme, theme } = useTheme();
+  const router = useRouter();
+  const supabase = createClient();
 
   return (
     <SidebarMenu>
@@ -53,10 +56,9 @@ export function SidebarUserNav({ user }: { user: User }) {
               <button
                 type="button"
                 className="w-full cursor-pointer"
-                onClick={() => {
-                  signOut({
-                    redirectTo: '/',
-                  });
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  router.push('/login');
                 }}
               >
                 Sign out

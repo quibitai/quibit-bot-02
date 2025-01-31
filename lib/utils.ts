@@ -1,4 +1,4 @@
-import type {
+import {
   CoreAssistantMessage,
   CoreMessage,
   CoreToolMessage,
@@ -8,7 +8,7 @@ import type {
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-import type { Message as DBMessage, Document } from '@/lib/db/schema';
+import type { Message as DBMessage, Document } from '../lib/db/schema';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -84,13 +84,43 @@ function addToolMessageToChat({
   });
 }
 
+export function convertToolMessagesToChat(
+  messages: Array<DBMessage | CoreToolMessage>,
+): Array<DBMessage> {
+  const result: Array<DBMessage> = [];
+  
+  for (const message of messages) {
+    if ('role' in message && (message as CoreToolMessage).role === 'tool') {
+      const toolMessages = addToolMessageToChat({
+        toolMessage: message as CoreToolMessage,
+        messages: result.map(msg => ({
+          ...msg,
+          content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+        })),
+      });
+      result.push(...toolMessages.map(msg => ({
+        id: msg.id,
+        chat_id: 'default',  // You'll need to provide the actual chat_id
+        user_id: 'system',   // Tool messages are from the system
+        role: msg.role as "user" | "system" | "assistant",
+        content: msg.content,
+        created_at: new Date().toISOString()
+      })));
+    } else {
+      result.push(message as DBMessage);
+    }
+  }
+  
+  return result;
+}
+
 export function convertToUIMessages(
   messages: Array<DBMessage>,
 ): Array<Message> {
   return messages.reduce((chatMessages: Array<Message>, message) => {
-    if (message.role === 'tool') {
+    if ('role' in message && (message as any).role === 'tool') {
       return addToolMessageToChat({
-        toolMessage: message as CoreToolMessage,
+        toolMessage: message as unknown as CoreToolMessage,
         messages: chatMessages,
       });
     }
@@ -102,16 +132,34 @@ export function convertToUIMessages(
       textContent = message.content;
     } else if (Array.isArray(message.content)) {
       for (const content of message.content) {
-        if (content.type === 'text') {
-          textContent += content.text;
-        } else if (content.type === 'tool-call') {
+        if (typeof content === 'string') {
+          textContent += content;
+          continue;
+        }
+        const typedContent = content as { type: string; text?: string; toolCallId?: string; toolName?: string; args?: any };
+        if (typedContent && typedContent.type === 'text' && typedContent.text) {
+          textContent += typedContent.text;
+        } else if (typedContent && typedContent.type === 'tool-call' && typedContent.toolCallId && typedContent.toolName) {
           toolInvocations.push({
             state: 'call',
-            toolCallId: content.toolCallId,
-            toolName: content.toolName,
-            args: content.args,
+            toolCallId: typedContent.toolCallId,
+            toolName: typedContent.toolName,
+            args: typedContent.args || {},
           });
         }
+      }
+    } else if (message.content && typeof message.content === 'object') {
+      const content = message.content as { text?: string; toolCallId?: string; toolName?: string; args?: any };
+      if (content.text) {
+        textContent = content.text;
+      }
+      if (content.toolCallId && content.toolName) {
+        toolInvocations.push({
+          state: 'call',
+          toolCallId: content.toolCallId,
+          toolName: content.toolName,
+          args: content.args || {},
+        });
       }
     }
 
@@ -119,7 +167,7 @@ export function convertToUIMessages(
       id: message.id,
       role: message.role as Message['role'],
       content: textContent,
-      toolInvocations,
+      toolInvocations: toolInvocations.length > 0 ? toolInvocations : undefined,
     });
 
     return chatMessages;
@@ -209,9 +257,7 @@ export function getMostRecentUserMessage(messages: Array<Message>) {
 export function getDocumentTimestampByIndex(
   documents: Array<Document>,
   index: number,
-) {
-  if (!documents) return new Date();
-  if (index > documents.length) return new Date();
-
-  return documents[index].createdAt;
+): string {
+  if (!documents[index]) return new Date().toISOString();
+  return documents[index].created_at;
 }
